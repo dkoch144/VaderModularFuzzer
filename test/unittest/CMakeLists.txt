@@ -84,8 +84,8 @@ else()
 endif()
 
 add_executable(VmfTest ${TEST_SRCS})
-if(VMF_ENABLE_DOTNET AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  set(managed_fixture_dir "${CMAKE_BINARY_DIR}/dotnet/managed-stdin/fixture")
+if(VMF_ENABLE_DOTNET AND (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+  set(managed_fixture_dir "${CMAKE_BINARY_DIR}/dotnet/managed-stdin/fixture output")
   add_custom_target(vmf_managed_stdin_fixture
     COMMAND "${VMF_DOTNET_EXECUTABLE}" build
       "${CMAKE_CURRENT_SOURCE_DIR}/inputs/ManagedHarness/ManagedHarness.csproj"
@@ -99,7 +99,7 @@ if(VMF_ENABLE_DOTNET AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
     VERBATIM)
   add_dependencies(vmf_managed_stdin_fixture vmf_dotnet_instrumenter)
   add_dependencies(VmfTest vmf_managed_stdin_fixture)
-  target_sources(VmfTest PRIVATE linux/ManagedStdinExecutorTest.cpp)
+  target_sources(VmfTest PRIVATE ManagedStdinExecutorTest.cpp)
   target_compile_definitions(VmfTest PRIVATE
     VMF_TEST_DOTNET="${VMF_DOTNET_EXECUTABLE}"
     VMF_TEST_MANAGED_HARNESS="${managed_fixture_dir}-staged/ManagedHarness.dll")

@@ -33,11 +33,17 @@ else()
         linux/initialization/StringsInitialization.cpp
         linux/initialization/DictionaryInitialization.cpp
     )
-    if(VMF_ENABLE_DOTNET AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
-        list(APPEND CoreModules_SOURCES linux/executor/ManagedStdinExecutor.cpp)
-    endif()
 endif()
 
+
+if(VMF_ENABLE_DOTNET AND (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+    list(APPEND CoreModules_SOURCES common/executor/ManagedStdinExecutor.cpp)
+    if(WIN32)
+        list(APPEND CoreModules_SOURCES windows/executor/ManagedHarnessProcess.cpp)
+    else()
+        list(APPEND CoreModules_SOURCES linux/executor/ManagedHarnessProcess.cpp)
+    endif()
+endif()
 
 list(APPEND CoreModules_SOURCES
     common/controller/AnalysisController.cpp

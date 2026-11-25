@@ -1,0 +1,28 @@
+name: Managed stdin harness on Windows
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  managed-stdin:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Initialize the pinned instrumenter
+        run: git submodule update --init submodules/vmf-dotnet-instrumenter
+      - name: Configure VMF
+        run: cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 -DVMF_ENABLE_DOTNET=ON
+      - name: Build VMF and the managed fixture
+        run: cmake --build build --config Release --parallel
+      - name: Verify the pinned instrumenter
+        run: ctest --test-dir build -C Release -R '^ManagedCoverageInstrumenter$' --output-on-failure --no-tests=error
+      - name: Verify binary stdin and AFL feedback through VMF
+        run: ctest --test-dir build -C Release -R '^ManagedStdinExecutorTest\.' --output-on-failure --no-tests=error

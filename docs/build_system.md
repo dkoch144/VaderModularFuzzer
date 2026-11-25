@@ -70,7 +70,7 @@ under `build_artifacts/dotnet` in the build directory. Run
 `ctest -R ManagedCoverageInstrumenter --output-on-failure` from that build
 directory to verify the tool on the managed fixture.
 
-On Linux, the same option enables `ManagedStdinExecutor`. Set its `sutArgv`
+On Linux and Windows, the same option enables `ManagedStdinExecutor`. Set its `sutArgv`
 to the .NET host and the staged harness DLL, for example
 `[dotnet, /path/to/staged/Harness.dll]`. The executor starts one process per
 testcase and delivers raw bytes on stdin. It appends a path where the harness
@@ -80,3 +80,5 @@ testcase callback. Pair the executor with `AFLFeedback`. The optional
 
 Run `ctest -R ManagedStdinExecutorTest --output-on-failure` to exercise this
 through VMF using the repository-owned, staged .NET 10 fixture.
+With the Visual Studio generator, add `-C Release` or the configuration you
+built to the CTest commands.
