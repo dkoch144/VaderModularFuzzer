@@ -49,7 +49,7 @@ std::wstring quoteArgument(const std::wstring& argument)
 }
 }
 
-bool vmf::runManagedHarness(const std::vector<std::string>& arguments, const std::filesystem::path& stdinPath,
+ManagedHarnessResult vmf::runManagedHarness(const std::vector<std::string>& arguments, const std::filesystem::path& stdinPath,
                            std::chrono::milliseconds timeout)
 {
     std::wstring command;
@@ -127,10 +127,10 @@ bool vmf::runManagedHarness(const std::vector<std::string>& arguments, const std
         if (!TerminateJobObject(job.get(), 1))
             processError("Cannot stop managed harness job", RuntimeException::UNEXPECTED_ERROR);
         WaitForSingleObject(process.get(), INFINITE);
-        return false;
+        return ManagedHarnessResult::TimedOut;
     }
     DWORD exitCode = 0;
     if (result != WAIT_OBJECT_0 || !GetExitCodeProcess(process.get(), &exitCode))
         processError("Cannot read managed harness exit status", RuntimeException::UNEXPECTED_ERROR);
-    return exitCode == 0;
+    return exitCode == 0 ? ManagedHarnessResult::Success : ManagedHarnessResult::Failed;
 }

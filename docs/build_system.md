@@ -73,10 +73,17 @@ directory to verify the tool on the managed fixture.
 On Linux and Windows, the same option enables `ManagedStdinExecutor`. Set its `sutArgv`
 to the .NET host and the staged harness DLL, for example
 `[dotnet, /path/to/staged/Harness.dll]`. The executor starts one process per
-testcase and delivers raw bytes on stdin. It appends a path where the harness
-must write its bitmap using `EdgeCoverage.WriteTo` after running its synchronous
-testcase callback. Pair the executor with `AFLFeedback`. The optional
-`timeoutInMs` defaults to 5000.
+testcase and delivers raw bytes on stdin. VMF appends two arguments to
+`sutArgv`, first the coverage output path and then a readiness marker path.
+After setup and immediately before invoking the synchronous testcase callback,
+the harness creates an empty file at the readiness path. The harness handles
+expected input rejections and writes its bitmap with `EdgeCoverage.WriteTo`
+before exiting successfully. Pair the executor with `AFLFeedback`.
+
+A launch that fails before readiness stops the campaign with a setup error.
+After readiness, VMF marks a nonzero exit or abnormal termination as `CRASHED`
+and a timeout as `HUNG`. The optional `timeoutInMs` defaults to 5000 and applies
+to startup and testcase execution together.
 
 Run `ctest -R ManagedStdinExecutorTest --output-on-failure` to exercise this
 through VMF using the repository-owned, staged .NET 10 fixture.

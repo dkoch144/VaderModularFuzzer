@@ -46,7 +46,7 @@ int spawnHarness(char* const* argv, int stdinFd, pid_t& child)
     return result;
 }
 
-bool waitForHarness(pid_t child, Clock::time_point deadline)
+ManagedHarnessResult waitForHarness(pid_t child, Clock::time_point deadline)
 {
     int status = 0;
     for (;;)
@@ -65,14 +65,19 @@ bool waitForHarness(pid_t child, Clock::time_point deadline)
             do
                 reaped = waitpid(child, &status, 0);
             while (reaped < 0 && errno == EINTR);
-            return exited && reaped == child && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+            if (reaped != child)
+                throw RuntimeException("Cannot reap managed harness", RuntimeException::UNEXPECTED_ERROR);
+            if (!exited)
+                return ManagedHarnessResult::TimedOut;
+            return WIFEXITED(status) && WEXITSTATUS(status) == 0 ?
+                ManagedHarnessResult::Success : ManagedHarnessResult::Failed;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
 }
 
-bool vmf::runManagedHarness(const std::vector<std::string>& arguments, const std::filesystem::path& stdinPath,
+ManagedHarnessResult vmf::runManagedHarness(const std::vector<std::string>& arguments, const std::filesystem::path& stdinPath,
                            std::chrono::milliseconds timeout)
 {
     std::vector<char*> argv;

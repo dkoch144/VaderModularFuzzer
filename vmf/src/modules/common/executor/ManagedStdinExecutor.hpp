@@ -32,6 +32,7 @@ private:
     int coverageCountKey{};
     int novelTag{};
     int successTag{};
-    int incompleteTag{};
+    int crashedTag{};
+    int hungTag{};
 };
 }

@@ -86,7 +86,8 @@ void ManagedStdinExecutor::registerStorageNeeds(StorageRegistry& registry)
     coverageCountKey = registry.registerKey("COVERAGE_COUNT", StorageRegistry::UINT, StorageRegistry::WRITE_ONLY);
     novelTag = registry.registerTag("HAS_NEW_COVERAGE", StorageRegistry::WRITE_ONLY);
     successTag = registry.registerTag("RAN_SUCCESSFULLY", StorageRegistry::WRITE_ONLY);
-    incompleteTag = registry.registerTag("INCOMPLETE", StorageRegistry::WRITE_ONLY);
+    crashedTag = registry.registerTag("CRASHED", StorageRegistry::WRITE_ONLY);
+    hungTag = registry.registerTag("HUNG", StorageRegistry::WRITE_ONLY);
 }
 
 void ManagedStdinExecutor::runTestCase(StorageModule&, StorageEntry* entry)
@@ -94,8 +95,10 @@ void ManagedStdinExecutor::runTestCase(StorageModule&, StorageEntry* entry)
     ScratchDirectory scratch;
     const auto inputPath = scratch.path("stdin");
     const auto outputPath = scratch.path("coverage");
+    const auto readyPath = scratch.path("ready");
     auto command = arguments;
     command.push_back(outputPath.u8string());
+    command.push_back(readyPath.u8string());
 
     std::ofstream input(inputPath, std::ios::binary);
     const auto size = entry->getBufferSize(testcaseKey);
@@ -106,14 +109,22 @@ void ManagedStdinExecutor::runTestCase(StorageModule&, StorageEntry* entry)
         throw RuntimeException("Cannot stage managed harness stdin", RuntimeException::UNEXPECTED_ERROR);
 
     const auto start = Clock::now();
-    const bool finished = runManagedHarness(command, inputPath, timeout);
+    const auto result = runManagedHarness(command, inputPath, timeout);
+    if (!std::filesystem::is_regular_file(readyPath))
+    {
+        throw RuntimeException(
+            result == ManagedHarnessResult::TimedOut ?
+                "Managed harness startup timed out before signaling readiness" :
+                "Managed harness startup failed before signaling readiness; check sutArgv and the harness arguments",
+            RuntimeException::CONFIGURATION_ERROR);
+    }
     const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start);
     entry->setValue(timingKey, static_cast<unsigned int>(std::clamp<decltype(elapsed)::rep>(
         elapsed.count(), 1, std::numeric_limits<unsigned int>::max())));
     entry->setValue(coverageCountKey, 0u);
-    if (!finished)
+    if (result != ManagedHarnessResult::Success)
     {
-        entry->addTag(incompleteTag);
+        entry->addTag(result == ManagedHarnessResult::TimedOut ? hungTag : crashedTag);
         return;
     }
 
@@ -123,10 +134,10 @@ void ManagedStdinExecutor::runTestCase(StorageModule&, StorageEntry* entry)
         throw RuntimeException("Managed harness must write a 65536-byte coverage map",
                                RuntimeException::CONFIGURATION_ERROR);
 
-    coverage.classifyCounts(trace.data(), trace.size());
-    entry->allocateAndCopyBuffer(traceKey, trace.size(), reinterpret_cast<char*>(trace.data()));
-    entry->setValue(coverageCountKey, coverage.countBytes(trace.data(), trace.size()));
-    if (coverage.hasNewBits(trace.data(), cumulative.data(), trace.size()))
+    coverage.classifyCounts(trace.data(), coverageMapSize);
+    entry->allocateAndCopyBuffer(traceKey, coverageMapSize, reinterpret_cast<char*>(trace.data()));
+    entry->setValue(coverageCountKey, coverage.countBytes(trace.data(), coverageMapSize));
+    if (coverage.hasNewBits(trace.data(), cumulative.data(), coverageMapSize))
         entry->addTag(novelTag);
     entry->addTag(successTag);
 }

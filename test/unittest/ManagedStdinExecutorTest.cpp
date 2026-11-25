@@ -8,31 +8,54 @@
 
 using namespace vmf;
 
-TEST(ManagedStdinExecutorTest, PublishesRepeatableCoverageForBinaryStdin)
+class ManagedStdinExecutorTest : public testing::Test
 {
+protected:
+    void configure(const std::string& assembly = VMF_TEST_MANAGED_HARNESS)
+    {
+        auto& factory = ModuleFactory::getInstance();
+        executor = ExecutorModule::castTo(factory.buildModule("ManagedStdinExecutor", "ManagedStdinExecutor"));
+        feedback = FeedbackModule::castTo(factory.buildModule("AFLFeedback", "AFLFeedback"));
+        helper.addModule(executor);
+        helper.addModule(feedback);
+        helper.getConfig()->setStringVectorParam("ManagedStdinExecutor", "sutArgv", {VMF_TEST_DOTNET, assembly});
+        helper.getConfig()->setIntParam("ManagedStdinExecutor", "timeoutInMs", 3000);
+        auto* registry = helper.getRegistry();
+        testcase = registry->registerKey("TEST_CASE", StorageRegistry::BUFFER, StorageRegistry::WRITE_ONLY);
+        trace = registry->registerKey("AFL_TRACE_BITS", StorageRegistry::BUFFER_TEMP, StorageRegistry::READ_ONLY);
+        novel = registry->registerTag("HAS_NEW_COVERAGE", StorageRegistry::READ_ONLY);
+        success = registry->registerTag("RAN_SUCCESSFULLY", StorageRegistry::READ_ONLY);
+        crashed = registry->registerTag("CRASHED", StorageRegistry::READ_ONLY);
+        hung = registry->registerTag("HUNG", StorageRegistry::READ_ONLY);
+        helper.initializeModulesAndStorage();
+    }
+
+    StorageEntry* addTestcase(char first, char second)
+    {
+        char bytes[] = {first, second};
+        auto* entry = helper.getStorage()->createNewEntry();
+        entry->allocateAndCopyBuffer(testcase, sizeof(bytes), bytes);
+        return entry;
+    }
+
     ModuleTestHelper helper;
-    auto& factory = ModuleFactory::getInstance();
-    auto* executor = ExecutorModule::castTo(factory.buildModule("ManagedStdinExecutor", "ManagedStdinExecutor"));
-    auto* feedback = FeedbackModule::castTo(factory.buildModule("AFLFeedback", "AFLFeedback"));
-    helper.addModule(executor);
-    helper.addModule(feedback);
-    helper.getConfig()->setStringVectorParam("ManagedStdinExecutor", "sutArgv",
-                                            {VMF_TEST_DOTNET, VMF_TEST_MANAGED_HARNESS});
-    auto* registry = helper.getRegistry();
-    const int testcase = registry->registerKey("TEST_CASE", StorageRegistry::BUFFER, StorageRegistry::WRITE_ONLY);
-    const int trace = registry->registerKey("AFL_TRACE_BITS", StorageRegistry::BUFFER_TEMP, StorageRegistry::READ_ONLY);
-    const int novel = registry->registerTag("HAS_NEW_COVERAGE", StorageRegistry::READ_ONLY);
-    const int success = registry->registerTag("RAN_SUCCESSFULLY", StorageRegistry::READ_ONLY);
-    helper.initializeModulesAndStorage();
+    ExecutorModule* executor{};
+    FeedbackModule* feedback{};
+    int testcase{};
+    int trace{};
+    int novel{};
+    int success{};
+    int crashed{};
+    int hung{};
+};
+
+TEST_F(ManagedStdinExecutorTest, PublishesRepeatableCoverageForBinaryStdin)
+{
+    configure();
     auto& storage = *helper.getStorage();
-    char a[] = {0, static_cast<char>(255)};
-    char b[] = {0, static_cast<char>(254)};
-    auto* first = storage.createNewEntry();
-    auto* second = storage.createNewEntry();
-    auto* repeated = storage.createNewEntry();
-    first->allocateAndCopyBuffer(testcase, sizeof(a), a);
-    second->allocateAndCopyBuffer(testcase, sizeof(b), b);
-    repeated->allocateAndCopyBuffer(testcase, sizeof(a), a);
+    auto* first = addTestcase(0, static_cast<char>(255));
+    auto* second = addTestcase(0, static_cast<char>(254));
+    auto* repeated = addTestcase(0, static_cast<char>(255));
     auto entries = storage.getNewEntries();
     executor->runTestCases(storage, entries);
     for (auto* entry : {first, second, repeated})
@@ -57,4 +80,51 @@ TEST(ManagedStdinExecutorTest, PublishesRepeatableCoverageForBinaryStdin)
         ++savedCount;
     }
     EXPECT_EQ(savedCount, 2u);
+}
+
+TEST_F(ManagedStdinExecutorTest, ClassifiesTestcaseOutcomesAndContinues)
+{
+    configure();
+    auto& storage = *helper.getStorage();
+    auto* rejected = addTestcase('R', 0);
+    auto* unexpected = addTestcase('E', 0);
+    auto* timedOut = addTestcase('T', 0);
+    auto* valid = addTestcase(0, static_cast<char>(255));
+    auto entries = storage.getNewEntries();
+
+    executor->runTestCases(storage, entries);
+
+    EXPECT_TRUE(rejected->hasTag(success));
+    EXPECT_TRUE(unexpected->hasTag(crashed));
+    EXPECT_TRUE(timedOut->hasTag(hung));
+    EXPECT_TRUE(valid->hasTag(success));
+    for (auto* entry : {rejected, valid})
+    {
+        EXPECT_FALSE(entry->hasTag(crashed));
+        EXPECT_FALSE(entry->hasTag(hung));
+    }
+    EXPECT_FALSE(unexpected->hasTag(hung));
+    EXPECT_FALSE(timedOut->hasTag(crashed));
+    EXPECT_FALSE(unexpected->hasTag(success));
+    EXPECT_FALSE(timedOut->hasTag(success));
+    EXPECT_FALSE(unexpected->hasTag(novel));
+    EXPECT_FALSE(timedOut->hasTag(novel));
+}
+
+TEST_F(ManagedStdinExecutorTest, ReportsMissingHarnessAsSetupError)
+{
+    configure(std::string(VMF_TEST_MANAGED_HARNESS) + ".missing.dll");
+    auto* entry = addTestcase(0, static_cast<char>(255));
+    try
+    {
+        executor->runTestCase(*helper.getStorage(), entry);
+        FAIL() << "Expected harness setup to fail";
+    }
+    catch (RuntimeException& error)
+    {
+        EXPECT_EQ(error.getErrorCode(), RuntimeException::CONFIGURATION_ERROR);
+        EXPECT_NE(std::string(error.getReason()).find("startup"), std::string::npos);
+    }
+    EXPECT_FALSE(entry->hasTag(crashed));
+    EXPECT_FALSE(entry->hasTag(hung));
 }

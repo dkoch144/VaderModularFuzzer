@@ -8,6 +8,13 @@
 
 namespace vmf
 {
-bool runManagedHarness(const std::vector<std::string>& arguments, const std::filesystem::path& stdinPath,
+enum class ManagedHarnessResult
+{
+    Success,
+    Failed,
+    TimedOut
+};
+
+ManagedHarnessResult runManagedHarness(const std::vector<std::string>& arguments, const std::filesystem::path& stdinPath,
                        std::chrono::milliseconds timeout);
 }
