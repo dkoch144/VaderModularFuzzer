@@ -61,3 +61,11 @@ Third party source libraries should be added to vmf/dependencies. There are thre
 3. Put the add_subdirectory() command in vmf/dependecies/CMakeLists.txt. In general,
    build the library as static where possible so it can be linked into a monolithic 
    VMFFramework.so/VMFFramework.dll.
+## Optional .NET assembly instrumenter
+
+Initialize the pinned instrumenter with `git submodule update --init submodules/vmf-dotnet-instrumenter`.
+Install the .NET 10 SDK and configure VMF with `-DVMF_ENABLE_DOTNET=ON`. Build
+the `vmf_dotnet_instrumenter` target to place the tool and coverage runtime
+under `build_artifacts/dotnet` in the build directory. Run
+`ctest -R ManagedCoverageInstrumenter --output-on-failure` from that build
+directory to verify the tool on the managed fixture.

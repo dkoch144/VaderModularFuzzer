@@ -78,6 +78,28 @@ add_subdirectory(vmf)
 include(GoogleTest)
 enable_testing()
 
+option(VMF_ENABLE_DOTNET "Build the VMF .NET assembly instrumenter" OFF)
+if(VMF_ENABLE_DOTNET)
+    set(VMF_DOTNET_INSTRUMENTER_DIR "${PROJECT_SOURCE_DIR}/submodules/vmf-dotnet-instrumenter")
+    set(VMF_DOTNET_PROJECT "${VMF_DOTNET_INSTRUMENTER_DIR}/src/Instrumenter/Instrumenter.csproj")
+    if(NOT EXISTS "${VMF_DOTNET_PROJECT}")
+        message(FATAL_ERROR "Initialize the instrumenter with git submodule update --init submodules/vmf-dotnet-instrumenter")
+    endif()
+    find_program(VMF_DOTNET_EXECUTABLE NAMES dotnet)
+    if(NOT VMF_DOTNET_EXECUTABLE)
+        message(FATAL_ERROR "VMF_ENABLE_DOTNET requires the .NET 10 SDK")
+    endif()
+    add_custom_target(vmf_dotnet_instrumenter ALL
+        COMMAND "${VMF_DOTNET_EXECUTABLE}" build "${VMF_DOTNET_PROJECT}" --configuration Release
+            --artifacts-path "${CMAKE_BINARY_DIR}/dotnet/artifacts"
+            --output "${VMF_BUILD_OUTPUT_DIR}/dotnet"
+        VERBATIM)
+    add_test(NAME ManagedCoverageInstrumenter
+        COMMAND "${CMAKE_COMMAND}" "-DDOTNET=${VMF_DOTNET_EXECUTABLE}"
+            "-DOUTPUT=${CMAKE_BINARY_DIR}/dotnet/verify"
+            -P "${VMF_DOTNET_INSTRUMENTER_DIR}/tests/Verify.cmake")
+endif()
+
 add_subdirectory(${PROJECT_SOURCE_DIR}/test)
 
 install(FILES "vmf/cmake/vmf.cmake" "vmf/cmake/vmf_imports.cmake"

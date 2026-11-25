@@ -2,3 +2,6 @@
 	path = submodules/klee
 	url = https://github.com/klee/klee
 	branch = v3.2
+[submodule "submodules/vmf-dotnet-instrumenter"]
+	path = submodules/vmf-dotnet-instrumenter
+	url = https://github.com/dkoch144/vmf-dotnet-instrumenter.git
