@@ -72,13 +72,14 @@ endforeach( OUTPUTCONFIG CMAKE_CONFIGURATION_TYPES )
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/vmf/cmake)
 include(vmf)
 
+option(VMF_ENABLE_DOTNET "Build .NET instrumentation and supported managed executors" OFF)
+
 # Add in project directories
 add_subdirectory(vmf)
 
 include(GoogleTest)
 enable_testing()
 
-option(VMF_ENABLE_DOTNET "Build the VMF .NET assembly instrumenter" OFF)
 if(VMF_ENABLE_DOTNET)
     set(VMF_DOTNET_INSTRUMENTER_DIR "${PROJECT_SOURCE_DIR}/submodules/vmf-dotnet-instrumenter")
     set(VMF_DOTNET_PROJECT "${VMF_DOTNET_INSTRUMENTER_DIR}/src/Instrumenter/Instrumenter.csproj")

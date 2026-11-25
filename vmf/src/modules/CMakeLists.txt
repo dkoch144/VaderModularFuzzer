@@ -33,6 +33,9 @@ else()
         linux/initialization/StringsInitialization.cpp
         linux/initialization/DictionaryInitialization.cpp
     )
+    if(VMF_ENABLE_DOTNET AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        list(APPEND CoreModules_SOURCES linux/executor/ManagedStdinExecutor.cpp)
+    endif()
 endif()
 
 

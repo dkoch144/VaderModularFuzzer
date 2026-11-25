@@ -69,3 +69,14 @@ the `vmf_dotnet_instrumenter` target to place the tool and coverage runtime
 under `build_artifacts/dotnet` in the build directory. Run
 `ctest -R ManagedCoverageInstrumenter --output-on-failure` from that build
 directory to verify the tool on the managed fixture.
+
+On Linux, the same option enables `ManagedStdinExecutor`. Set its `sutArgv`
+to the .NET host and the staged harness DLL, for example
+`[dotnet, /path/to/staged/Harness.dll]`. The executor starts one process per
+testcase and delivers raw bytes on stdin. It appends a path where the harness
+must write its bitmap using `EdgeCoverage.WriteTo` after running its synchronous
+testcase callback. Pair the executor with `AFLFeedback`. The optional
+`timeoutInMs` defaults to 5000.
+
+Run `ctest -R ManagedStdinExecutorTest --output-on-failure` to exercise this
+through VMF using the repository-owned, staged .NET 10 fixture.
