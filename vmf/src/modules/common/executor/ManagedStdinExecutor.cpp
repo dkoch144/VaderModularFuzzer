@@ -61,13 +61,11 @@ private:
 };
 }
 
-#ifdef __linux__
 struct ManagedStdinExecutor::ReusedHarness
 {
     ScratchDirectory scratch;
     std::unique_ptr<ManagedHarnessSession> session;
 };
-#endif
 
 ManagedStdinExecutor::ManagedStdinExecutor(std::string name) : ExecutorModule(std::move(name))
 {
@@ -88,14 +86,8 @@ void ManagedStdinExecutor::init(ConfigInterface& config)
     if (arguments.empty() || arguments.front().empty() || timeout.count() <= 0)
         throw RuntimeException("ManagedStdinExecutor requires sutArgv and a positive timeoutInMs",
                                RuntimeException::CONFIGURATION_ERROR);
-#ifdef __linux__
     reusedHarness.reset();
     reuseProcess = config.getBoolParam(getModuleName(), "reuseProcess", false);
-#else
-    if (config.getBoolParam(getModuleName(), "reuseProcess", false))
-        throw RuntimeException("Managed harness process reuse is currently available on Linux",
-                               RuntimeException::CONFIGURATION_ERROR);
-#endif
 }
 
 void ManagedStdinExecutor::registerStorageNeeds(StorageRegistry& registry)
@@ -117,7 +109,6 @@ void ManagedStdinExecutor::runTestCase(StorageModule&, StorageEntry* entry)
     auto start = Clock::now();
     ManagedHarnessResult result;
     const auto size = entry->getBufferSize(testcaseKey);
-#ifdef __linux__
     if (reuseProcess)
     {
         if (!reusedHarness)
@@ -147,7 +138,6 @@ void ManagedStdinExecutor::runTestCase(StorageModule&, StorageEntry* entry)
         }
     }
     else
-#endif
     {
         scratch.emplace();
         const auto inputPath = scratch->path("stdin");

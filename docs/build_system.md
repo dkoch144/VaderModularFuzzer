@@ -93,7 +93,7 @@ through VMF using the repository-owned, staged .NET 10 fixture.
 With the Visual Studio generator, add `-C Release` or the configuration you
 built to the CTest commands.
 
-### Reuse a managed harness process on Linux
+### Reuse a managed harness process on Linux and Windows
 
 Set `reuseProcess: true` on `ManagedStdinExecutor` to opt in. VMF appends
 `--vmf-reuse-stdin` after the coverage and readiness paths. When the harness

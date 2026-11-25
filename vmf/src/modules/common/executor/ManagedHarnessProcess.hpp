@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -20,7 +21,6 @@ enum class ManagedHarnessResult
 ManagedHarnessResult runManagedHarness(const std::vector<std::string>& arguments, const std::filesystem::path& stdinPath,
                        std::chrono::milliseconds timeout);
 
-#ifdef __linux__
 class ManagedHarnessSession
 {
 public:
@@ -34,8 +34,12 @@ public:
 
 private:
     void stop() noexcept;
+#ifdef _WIN32
+    struct Process;
+    std::unique_ptr<Process> process;
+#else
     int channel = -1;
     int child = -1;
-};
 #endif
+};
 }

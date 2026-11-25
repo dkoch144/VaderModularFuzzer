@@ -5,6 +5,7 @@
 #include "ModuleTestHelper.hpp"
 #include <gtest/gtest.h>
 #include <cstring>
+#include <vector>
 
 using namespace vmf;
 
@@ -74,7 +75,6 @@ protected:
     int hung{};
 };
 
-#ifdef __linux__
 TEST_F(ManagedStdinExecutorTest, ReusedHarnessDeliversEmptyStdinForAnUnallocatedTestcase)
 {
     configure(VMF_TEST_MANAGED_HARNESS, true);
@@ -105,6 +105,20 @@ TEST_F(ManagedStdinExecutorTest, ReusesHarnessAndPublishesRepeatableCoverage)
     ASSERT_EQ(repeated->getBufferSize(trace), 65536);
     EXPECT_NE(std::memcmp(first->getBufferPointer(trace), requiresPriorTestcase->getBufferPointer(trace), 65536), 0);
     EXPECT_EQ(std::memcmp(first->getBufferPointer(trace), repeated->getBufferPointer(trace), 65536), 0);
+}
+
+TEST_F(ManagedStdinExecutorTest, DeliversTestcasesLargerThanThePipeBuffer)
+{
+    configure(VMF_TEST_MANAGED_HARNESS, true);
+    auto& storage = *helper.getStorage();
+    auto* entry = storage.createNewEntry();
+    std::vector<char> bytes(128 * 1024, static_cast<char>(0xff));
+    entry->allocateAndCopyBuffer(testcase, static_cast<int>(bytes.size()), bytes.data());
+
+    executor->runTestCase(storage, entry);
+
+    ASSERT_TRUE(entry->hasTag(success));
+    EXPECT_EQ(entry->getBufferSize(trace), 65536);
 }
 
 TEST_F(ManagedStdinExecutorTest, ReplacesReusedHarnessAfterTestcaseFailures)
@@ -170,7 +184,6 @@ TEST_F(ManagedStdinExecutorTest, StartsFreshProcessesByDefault)
     EXPECT_TRUE(first->hasTag(success));
     EXPECT_TRUE(second->hasTag(success));
 }
-#endif
 
 TEST_F(ManagedStdinExecutorTest, PublishesRepeatableCoverageForBinaryStdin)
 {

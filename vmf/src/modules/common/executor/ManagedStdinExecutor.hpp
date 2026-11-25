@@ -25,11 +25,9 @@ private:
     static constexpr std::size_t coverageMapSize = 65536;
     std::vector<std::string> arguments;
     std::chrono::milliseconds timeout{};
-#ifdef __linux__
     struct ReusedHarness;
     bool reuseProcess = false;
     std::unique_ptr<ReusedHarness> reusedHarness;
-#endif
     AFLCoverageUtil coverage;
     alignas(uint64_t) std::array<uint8_t, coverageMapSize> cumulative{};
 
