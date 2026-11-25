@@ -92,3 +92,21 @@ Run `ctest -R ManagedStdinExecutorTest --output-on-failure` to exercise this
 through VMF using the repository-owned, staged .NET 10 fixture.
 With the Visual Studio generator, add `-C Release` or the configuration you
 built to the CTest commands.
+
+### Reuse a managed harness process on Linux
+
+Set `reuseProcess: true` on `ManagedStdinExecutor` to opt in. VMF appends
+`--vmf-reuse-stdin` after the coverage and readiness paths. When the harness
+receives this flag, finish setup and call `ReusableStdinHarness.Run` from
+`Vmf.ManagedCoverage` with the coverage path, the synchronous callback, and
+a state reset action. It supplies a separate stream ending at EOF for each
+testcase and sends readiness and completion messages over the standard
+streams. Read testcase bytes from the callback stream and keep raw stdout
+available for the protocol. The helper redirects `Console.Out` to stderr.
+
+The callback handles expected input rejection. The reset action restores
+state, including stopping any background work that can affect subsequent
+testcases. VMF restarts the process after a crash, timeout, or reset failure.
+A reset failure is logged as a harness error and VMF discards that testcase's
+coverage. The `timeoutInMs` limit applies separately to readiness and to
+each testcase, including reset.

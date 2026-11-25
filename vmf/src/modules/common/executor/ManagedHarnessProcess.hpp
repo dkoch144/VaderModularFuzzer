@@ -2,6 +2,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -12,9 +13,29 @@ enum class ManagedHarnessResult
 {
     Success,
     Failed,
-    TimedOut
+    TimedOut,
+    ResetFailed
 };
 
 ManagedHarnessResult runManagedHarness(const std::vector<std::string>& arguments, const std::filesystem::path& stdinPath,
                        std::chrono::milliseconds timeout);
+
+#ifdef __linux__
+class ManagedHarnessSession
+{
+public:
+    ManagedHarnessSession(const std::vector<std::string>& arguments, std::chrono::milliseconds timeout);
+    ~ManagedHarnessSession();
+    ManagedHarnessSession(const ManagedHarnessSession&) = delete;
+    ManagedHarnessSession& operator=(const ManagedHarnessSession&) = delete;
+
+    bool isRunning() const;
+    ManagedHarnessResult run(const char* input, std::uint32_t size, std::chrono::milliseconds timeout);
+
+private:
+    void stop() noexcept;
+    int channel = -1;
+    int child = -1;
+};
+#endif
 }

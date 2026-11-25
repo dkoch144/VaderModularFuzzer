@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #include "ManagedStdinExecutor.hpp"
 #include "ManagedHarnessProcess.hpp"
+#include "Logging.hpp"
 #include "ModuleFactory.hpp"
 
 #include <algorithm>
@@ -8,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <optional>
 #include <random>
 #include <utility>
 
@@ -59,10 +61,20 @@ private:
 };
 }
 
+#ifdef __linux__
+struct ManagedStdinExecutor::ReusedHarness
+{
+    ScratchDirectory scratch;
+    std::unique_ptr<ManagedHarnessSession> session;
+};
+#endif
+
 ManagedStdinExecutor::ManagedStdinExecutor(std::string name) : ExecutorModule(std::move(name))
 {
     cumulative.fill(255);
 }
+
+ManagedStdinExecutor::~ManagedStdinExecutor() = default;
 
 Module* ManagedStdinExecutor::build(std::string name)
 {
@@ -76,6 +88,14 @@ void ManagedStdinExecutor::init(ConfigInterface& config)
     if (arguments.empty() || arguments.front().empty() || timeout.count() <= 0)
         throw RuntimeException("ManagedStdinExecutor requires sutArgv and a positive timeoutInMs",
                                RuntimeException::CONFIGURATION_ERROR);
+#ifdef __linux__
+    reusedHarness.reset();
+    reuseProcess = config.getBoolParam(getModuleName(), "reuseProcess", false);
+#else
+    if (config.getBoolParam(getModuleName(), "reuseProcess", false))
+        throw RuntimeException("Managed harness process reuse is currently available on Linux",
+                               RuntimeException::CONFIGURATION_ERROR);
+#endif
 }
 
 void ManagedStdinExecutor::registerStorageNeeds(StorageRegistry& registry)
@@ -92,36 +112,78 @@ void ManagedStdinExecutor::registerStorageNeeds(StorageRegistry& registry)
 
 void ManagedStdinExecutor::runTestCase(StorageModule&, StorageEntry* entry)
 {
-    ScratchDirectory scratch;
-    const auto inputPath = scratch.path("stdin");
-    const auto outputPath = scratch.path("coverage");
-    const auto readyPath = scratch.path("ready");
-    auto command = arguments;
-    command.push_back(outputPath.u8string());
-    command.push_back(readyPath.u8string());
-
-    std::ofstream input(inputPath, std::ios::binary);
+    std::optional<ScratchDirectory> scratch;
+    std::filesystem::path outputPath;
+    auto start = Clock::now();
+    ManagedHarnessResult result;
     const auto size = entry->getBufferSize(testcaseKey);
-    if (size > 0)
-        input.write(entry->getBufferPointer(testcaseKey), size);
-    input.close();
-    if (!input)
-        throw RuntimeException("Cannot stage managed harness stdin", RuntimeException::UNEXPECTED_ERROR);
-
-    const auto start = Clock::now();
-    const auto result = runManagedHarness(command, inputPath, timeout);
-    if (!std::filesystem::is_regular_file(readyPath))
+#ifdef __linux__
+    if (reuseProcess)
     {
-        throw RuntimeException(
-            result == ManagedHarnessResult::TimedOut ?
-                "Managed harness startup timed out before signaling readiness" :
-                "Managed harness startup failed before signaling readiness; check sutArgv and the harness arguments",
-            RuntimeException::CONFIGURATION_ERROR);
+        if (!reusedHarness)
+            reusedHarness = std::make_unique<ReusedHarness>();
+        auto& harness = *reusedHarness;
+        outputPath = harness.scratch.path("coverage");
+        if (!harness.session || !harness.session->isRunning())
+        {
+            auto command = arguments;
+            command.push_back(outputPath.u8string());
+            command.push_back(harness.scratch.path("ready").u8string());
+            command.push_back("--vmf-reuse-stdin");
+            harness.session.reset();
+            harness.session = std::make_unique<ManagedHarnessSession>(command, timeout);
+        }
+        std::filesystem::remove(outputPath);
+        try
+        {
+            const char* input = size > 0 ? entry->getBufferPointer(testcaseKey) : nullptr;
+            result = harness.session->run(input, static_cast<std::uint32_t>(std::max(size, 0)), timeout);
+        }
+        catch (...)
+        {
+            // A partial request cannot be retried on the same stream.
+            harness.session.reset();
+            throw;
+        }
+    }
+    else
+#endif
+    {
+        scratch.emplace();
+        const auto inputPath = scratch->path("stdin");
+        outputPath = scratch->path("coverage");
+        const auto readyPath = scratch->path("ready");
+        auto command = arguments;
+        command.push_back(outputPath.u8string());
+        command.push_back(readyPath.u8string());
+
+        std::ofstream input(inputPath, std::ios::binary);
+        if (size > 0)
+            input.write(entry->getBufferPointer(testcaseKey), size);
+        input.close();
+        if (!input)
+            throw RuntimeException("Cannot stage managed harness stdin", RuntimeException::UNEXPECTED_ERROR);
+
+        start = Clock::now();
+        result = runManagedHarness(command, inputPath, timeout);
+        if (!std::filesystem::is_regular_file(readyPath))
+        {
+            throw RuntimeException(
+                result == ManagedHarnessResult::TimedOut ?
+                    "Managed harness startup timed out before signaling readiness" :
+                    "Managed harness startup failed before signaling readiness; check sutArgv and the harness arguments",
+                RuntimeException::CONFIGURATION_ERROR);
+        }
     }
     const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(Clock::now() - start);
     entry->setValue(timingKey, static_cast<unsigned int>(std::clamp<decltype(elapsed)::rep>(
         elapsed.count(), 1, std::numeric_limits<unsigned int>::max())));
     entry->setValue(coverageCountKey, 0u);
+    if (result == ManagedHarnessResult::ResetFailed)
+    {
+        LOG_ERROR << "Managed harness failed to reset testcase state. VMF will start a replacement harness.";
+        return;
+    }
     if (result != ManagedHarnessResult::Success)
     {
         entry->addTag(result == ManagedHarnessResult::TimedOut ? hungTag : crashedTag);
