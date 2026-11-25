@@ -11,7 +11,13 @@ catch (FormatException)
 {
     // This fixture treats malformed input as an expected rejection.
 }
+catch (Exception error)
+{
+    Console.Error.WriteLine(error);
+    return 1;
+}
 EdgeCoverage.WriteTo(args[0]);
+return 0;
 
 static void TestCase(ReadOnlySpan<byte> input)
 {

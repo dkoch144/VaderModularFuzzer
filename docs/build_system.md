@@ -78,7 +78,10 @@ testcase and delivers raw bytes on stdin. VMF appends two arguments to
 After setup and immediately before invoking the synchronous testcase callback,
 the harness creates an empty file at the readiness path. The harness handles
 expected input rejections and writes its bitmap with `EdgeCoverage.WriteTo`
-before exiting successfully. Pair the executor with `AFLFeedback`.
+before exiting successfully. For other callback exceptions, report the
+exception and return a nonzero exit code from the harness. This lets VMF
+classify the failure without waiting for operating-system crash reporting.
+Pair the executor with `AFLFeedback`.
 
 A launch that fails before readiness stops the campaign with a setup error.
 After readiness, VMF marks a nonzero exit or abnormal termination as `CRASHED`
